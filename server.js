@@ -9,7 +9,12 @@ const pool = require('./db');  // Import the database connection pool
 const app = express();
 const port = process.env.PORT || 5000;
 
-app.use(cors());
+app.use(cors({
+  origin: [process.env.CLIENT_URL, "http://localhost:3000"].filter(Boolean),
+  methods: "GET,POST",
+  allowedHeaders: "Content-Type",
+}));
+
 app.use(bodyParser.json());  // To parse JSON request bodies
 
 // Set up Multer for file handling
