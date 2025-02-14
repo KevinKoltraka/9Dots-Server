@@ -1,104 +1,115 @@
+require('dotenv').config();  // Load environment variables from .env file
 const express = require('express');
-const nodemailer = require('nodemailer');
-const bodyParser = require('body-parser');
 const cors = require('cors');
+const bodyParser = require('body-parser');
 const multer = require('multer');
-require('dotenv').config();
-const pool = require('./db');  // Import the database connection pool
+const mysql = require('mysql2');
 
 const app = express();
-const port = process.env.PORT || 5000;
+const port = 5000;
 
-app.use(cors({
-  origin: [process.env.CLIENT_URL, "http://localhost:3000"].filter(Boolean),
-  methods: "GET,POST",
-  allowedHeaders: "Content-Type",
-}));
-
-app.use(bodyParser.json());  // To parse JSON request bodies
-
-// Set up Multer for file handling
-const upload = multer({ dest: 'uploads/' });  // Files will be stored in 'uploads' folder
-
-const { EMAIL, PASSWORD, TO_EMAIL } = process.env;
-if (!EMAIL || !PASSWORD || !TO_EMAIL) {
-  console.error("Missing environment variables. Please ensure EMAIL, PASSWORD, and TO_EMAIL are set in the .env file.");
-  process.exit(1);
-}
-
-// Set up the email transporter using nodemailer
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: EMAIL,
-    pass: PASSWORD,
-  },
+// MySQL connection setup using environment variables from .env file
+const pool = mysql.createPool({
+  host: process.env.DB_HOST || 'localhost',  // Use 'localhost' as fallback if the environment variable is not set
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD || 'Cobra.192837465',
+  database: process.env.DB_DATABASE || 'job_postings',
+  waitForConnections: process.env.DB_WAIT_FOR_CONNECTIONS === 'true',  // Convert string 'true' to boolean
+  connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT, 10) || 10,
+  queueLimit: parseInt(process.env.DB_QUEUE_LIMIT, 10) || 0,
 });
 
-// POST route for sending emails
-app.post('/send-email', (req, res) => {
-  const { name, email, message } = req.body;
+// Middleware setup
+app.use(cors());
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 
-  if (!name || !email || !message) {
-    return res.status(400).json({ error: 'Please fill all the fields.' });
-  }
+// Initialize multer for file uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, 'uploads/');
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + '-' + file.originalname);
+  },
+});
+const upload = multer({ storage: storage });
 
-  const mailOptions = {
-    from: EMAIL,
-    to: TO_EMAIL,
-    subject: `New Message from ${name}`,
-    text: `You have a new message from ${name} (${email}): \n\n${message}`,
-    replyTo: email,
-  };
-
-  transporter.sendMail(mailOptions, (error, info) => {
-    if (error) {
-      console.error('Error sending email:', error);
-      return res.status(500).json({ error: 'Error sending email.' });
+// Endpoint to fetch job listings
+app.get('/jobs', (req, res) => {
+  pool.query('SELECT * FROM jobs ORDER BY id DESC', (err, result) => {
+    if (err) {
+      return res.status(500).send({ message: 'Error fetching jobs' });
     }
-    return res.status(200).json({ message: 'Email sent successfully!' });
+    res.status(200).json({ jobs: result });
   });
 });
 
-// POST route for posting a new job (with database integration)
-app.post('/post-job', upload.single('companyLogo'), async (req, res) => {
-  const { title, description, location, salary, requirements, companyName, deadline, employmentType, jobCategory, skills } = req.body;
-  const parsedSkills = Array.isArray(skills) ? skills : skills.split(',').map(skill => skill.trim());
 
-  if (!title || !description || !location || !salary || !companyName || !deadline || !jobCategory || !parsedSkills) {
-    return res.status(400).json({ error: 'Please provide all required job information.' });
+
+// Endpoint to post a job
+app.post('/post-job', async (req, res) => {
+  const {
+    title,
+    description,
+    location,
+    salary,
+    requirements,
+    companyName,
+    deadline,
+    employmentType,
+    jobCategory,
+    skills,
+  } = req.body;
+
+  if (!title || !companyName) {
+    return res.status(400).json({ message: 'Title and company name are required' });
   }
 
+  const jobDeadline = deadline ? deadline : null;
+
   try {
-    // Insert the new job posting into the database
-    const [result] = await pool.execute(
-      `INSERT INTO job_postings (title, description, location, salary, requirements, company_name, deadline, employmentType, jobCategory, skills, companyLogo) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    const [result] = await pool.promise().query(
+      'INSERT INTO jobs (title, description, location, salary, requirements, company_name, deadline, employment_type, job_category, skills) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
-        title, description, location, salary, requirements, companyName, deadline, employmentType, jobCategory, JSON.stringify(parsedSkills), req.file ? req.file.filename : null
+        title,
+        description,
+        location,
+        salary,
+        requirements,
+        companyName,
+        jobDeadline,
+        employmentType,
+        jobCategory,
+        skills,
       ]
     );
 
-    console.log('New job posting saved to database:', result);
-
-    return res.status(200).json({ message: 'Job posted successfully!', jobId: result.insertId });
-  } catch (error) {
-    console.error('Error saving job posting to database:', error);
-    return res.status(500).json({ error: 'Error saving job posting.' });
+    res.status(200).json({ id: result.insertId, ...req.body });
+  } catch (err) {
+    console.error('Error posting job:', err);
+    res.status(500).send({ message: 'Error posting job', error: err.message });
   }
 });
 
-// GET route for fetching posted jobs (from the database)
-app.get('/jobs', async (req, res) => {
+
+
+// Endpoint to delete a job
+app.delete('/delete-job/:jobId', async (req, res) => {
+  const jobId = req.params.jobId;
+
   try {
-    const [rows] = await pool.execute('SELECT * FROM job_postings');
-    return res.status(200).json({ jobs: rows });
-  } catch (error) {
-    console.error('Error fetching jobs from database:', error);
-    return res.status(500).json({ error: 'Error fetching job postings.' });
+    // Delete job from the database
+    await pool.promise().query('DELETE FROM jobs WHERE id = ?', [jobId]);
+
+    res.status(200).send({ message: 'Job deleted successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send({ message: 'Error deleting job' });
   }
 });
 
+// Start the server
 app.listen(port, () => {
-  console.log(`Server running on http://localhost:${port}`);
+  console.log(`Server is running on http://localhost:${port}`);
 });
