@@ -8,11 +8,19 @@ const app = express();
 
 // Middleware
 app.set('trust proxy', 1);
+const clientUrl = process.env.CLIENT_URL ? process.env.CLIENT_URL.replace(/\/$/, "") : "https://www.9dotsagency.com"
+// server.js - Replace CORS configuration with:
 app.use(cors({
-  origin: process.env.CLIENT_URL, // Should be https://www.9dotsagency.com
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
+  origin: [
+    'https://www.9dotsagency.com',
+    'https://9dotsagency.com' // Non-www version
+  ],
+  methods: ['POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type' , 'Authorization'],
+  exposedHeaders: ['Access-Control-Allow-Origin'],
+  credentials: true,
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 }));
 app.options('*', cors());
 app.use(express.json());
