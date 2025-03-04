@@ -1,7 +1,7 @@
 // server.js (Node.js backend)
-require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+require('dotenv').config();
 const nodemailer = require('nodemailer');
 
 const app = express();
@@ -9,11 +9,12 @@ const app = express();
 // Middleware
 app.set('trust proxy', 1);
 app.use(cors({
-  origin: process.env.CLIENT_URL,
-  methods: ['POST', 'OPTIONS'],
+  origin: process.env.CLIENT_URL, // Should be https://www.9dotsagency.com
+  methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
+app.options('*', cors());
 app.use(express.json());
 
 // Create transporter using environment variables
