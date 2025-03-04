@@ -7,9 +7,12 @@ const nodemailer = require('nodemailer');
 const app = express();
 
 // Middleware
+app.set('trust proxy', 1);
 app.use(cors({
-  origin: process.env.CLIENT_URL, // Allow only your frontend domain
-  methods: ['POST'] // Only allow POST requests
+  origin: process.env.CLIENT_URL,
+  methods: ['POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 }));
 app.use(express.json());
 
