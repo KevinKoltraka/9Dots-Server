@@ -11,10 +11,15 @@ app.use(cors({
   origin: [
     'https://www.9dotsagency.com',
     'https://9dotsagency.com',
-    'http://localhost:3000' // For development
+    'http://localhost:3000'
   ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'Baggage',  // Add these headers
+    'Sentry-Trace'
+  ],
   credentials: true,
   optionsSuccessStatus: 200
 }));
@@ -82,7 +87,7 @@ app.post('/send-application', upload.single('cv'), async (req, res) => {
 app.post('/send-email', async (req, res) => {
   try {
     const { name, email, message } = req.body;
-    
+
     await transporter.sendMail({
       from: `"Contact Form" <${process.env.EMAIL_USER}>`,
       to: process.env.EMAIL_TO,
@@ -94,7 +99,7 @@ app.post('/send-email', async (req, res) => {
         <p><strong>Message:</strong> ${message}</p>
       `
     });
-    
+
     res.status(200).json({ success: true });
   } catch (error) {
     console.error('Contact Form Error:', error);
